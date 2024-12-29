@@ -7,6 +7,19 @@
 #include <errno.h>
 #include <unistd.h>
 
+typedef struct {
+	uint16_t id;
+	uint8_t flags[2];
+	uint16_t qdcount;
+	uint16_t ancount;
+	uint16_t nscount;
+	uint16_t arcount;
+} dns_header_t;
+
+#define QR_MASK (1 << 7); // 100000000, only QR is set to 1 and everything else is set to 0
+
+void print_hex(char buf[], size_t len);
+
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -43,6 +56,8 @@ int main() {
     char buffer[512];
     socklen_t clientAddrLen = sizeof(clientAddress);
     
+	uint16_t id = 1234;
+
     while (1) {
         // Receive data
         bytesRead = recvfrom(udpSocket, buffer, sizeof(buffer), 0, (struct sockaddr*)&clientAddress, &clientAddrLen);
@@ -53,12 +68,13 @@ int main() {
     
         buffer[bytesRead] = '\0';
         printf("Received %d bytes: %s\n", bytesRead, buffer);
-    
-        // Create an empty response
-        char response[1] = { '\0' };
+		
+        dns_header_t response = {0};
+		response.id = htons(1234);
+		response.flags[0] |= QR_MASK;
     
         // Send response
-        if (sendto(udpSocket, response, sizeof(response), 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) == -1) {
+        if (sendto(udpSocket, &response, sizeof(response), 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) == -1) {
             perror("Failed to send response");
         }
     }
@@ -68,3 +84,9 @@ int main() {
     return 0;
 }
 
+void print_hex(char buf[], size_t len) {
+	for (int i = 0; i < len; i++) {
+		printf("%02x ", buf[i]);
+	}
+	printf("\n");
+}
