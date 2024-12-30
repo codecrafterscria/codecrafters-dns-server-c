@@ -24,15 +24,15 @@ typedef struct {
 typedef struct {
   uint16_t type;
   uint16_t class;
-  size_t label_len;
-  label_t name[];
+  size_t name_len;
+  label_t *name[];
 } dns_query_t;
 
 // temporary before creating a header encoder
 #define QR_MASK                                                                \
   (1 << 7); // 100000000, only QR is set to 1 and everything else is set to 0
 
-dns_query_t parse_query(char buf[], size_t len);
+void parse_query(dns_query_t *query, char buf[]);
 
 int main() {
   // Disable output buffering
@@ -90,6 +90,9 @@ int main() {
     response.id = htons(1234);
     response.flags[0] |= QR_MASK;
 
+    dns_query_t *query = malloc(sizeof(dns_query_t));
+    parse_query(query, buffer);
+
     // Send response
     if (sendto(udpSocket, &response, sizeof(response), 0,
                (struct sockaddr *)&clientAddress,
@@ -103,22 +106,37 @@ int main() {
   return 0;
 }
 
-dns_query_t parse_query(char buf[], size_t len) {
+void parse_query(dns_query_t *query, char buf[]) {
   size_t offset = 12; // skip the header
 
-  dns_query_t dns_query;
-  dns_query.class = 1;
-  dns_query.type = 1;
+  query->class = 1;
+  query->type = 1;
 
   while (buf[offset] != '\0') {
     printf("buf: %c", buf[offset]);
-    label_t label;
-    label.len = buf[offset];
-    for (int i = 0; i < len; i++) {
-      label.content[i] = buf[offset + i];
+    size_t label_len = buf[offset];
+    label_t *label = malloc(sizeof(label_t) + label_len + 1);
+    label->len = label_len;
+    for (int i = 0; i <= label_len; i++) {
+      label->content[i] = buf[offset + i + 1];
     }
-    offset += len + 1;
-  }
+    label->content[label_len] = '\0';
+    label_t *new_name = realloc(query->name, sizeof(label_t) * (query->name_len + 1) + label->len);
+    if (new_name == NULL) {
+      perror("realloc failed");
+      free(label);
+      exit(1);
+    }
+    dns_query_t *new_query = realloc(query, sizeof(dns_query_t) + sizeof(label_t) * (query->name_len + 1) + label->len);
+    if (new_query == NULL) {
+      perror("realloc failed");
+      free(label);
+      exit(1);
+    }
+    query = new_query;
 
-  return dns_query;
+    memcpy(&query->name[query->name_len], label, sizeof(label_t) + label_len + 1);
+    query->name_len++;
+    offset += label_len + 1;
+  }
 }
